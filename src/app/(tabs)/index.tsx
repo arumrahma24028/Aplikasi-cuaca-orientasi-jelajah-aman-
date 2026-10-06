@@ -1,5 +1,6 @@
 // src/app/(tabs)/index.tsx
 import { useState, useEffect, useRef } from "react";
+import { mintaIzinLokasi, ambilKoordinatSaatIni } from "../../services/locationService";
 import {
     View,
     Text,
@@ -39,6 +40,7 @@ export default function HalamanUtama() {
         useState<DataKualitasUdara | null>(null);
     const [sedangMemuat, setSedangMemuat] = useState(false);
     const [pesanError, setPesanError] = useState<string | null>(null);
+    const [pesanLokasi, setPesanLokasi] = useState<string | null>(null);
 
     const teksTertunda = useDebounce(teksCari, 500);
 
@@ -89,7 +91,28 @@ export default function HalamanUtama() {
             }
         }
     }
+    async function gunakanLokasiSaatIni() {
+        const status = await mintaIzinLokasi();
 
+        if (status === "denied") {
+            setPesanLokasi("Izin lokasi ditolak. Silakan cari kota secara manual di atas.");
+            return;
+        }
+        if (status === "unavailable") {
+            setPesanLokasi("Layanan lokasi tidak aktif di perangkat ini. Silakan cari kota secara manual.");
+        return;
+        }
+
+        setPesanLokasi(null);
+            const koordinat = await ambilKoordinatSaatIni();
+                pilihKota({
+                id: -1,
+                name: "Lokasi Saat Ini",
+                latitude: koordinat.latitude,
+                longitude: koordinat.longitude,
+                country: "",
+            });
+    }
 return (
     <SafeAreaView
         style={{
@@ -99,6 +122,9 @@ return (
         }}
     >
         <SearchBox onCari={setTeksCari} />
+        
+        <Button title="Gunakan Lokasi Saat Ini" onPress={gunakanLokasiSaatIni} />
+        {pesanLokasi && <Text>{pesanLokasi}</Text>}
 
         {hasilPencarian.map((kota) => (
             <TouchableOpacity
@@ -166,3 +192,4 @@ return (
         <AtribusiCuaca />
     </SafeAreaView>
 );
+}
