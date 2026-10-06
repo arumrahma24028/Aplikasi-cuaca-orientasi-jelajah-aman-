@@ -27,6 +27,7 @@ import {
     DataCuacaLengkap,
     DataKualitasUdara,
 } from "../../../types/weather";
+import { router } from "expo-router";
 
 export default function HalamanUtama() {
     const [teksCari, setTeksCari] = useState("");
@@ -163,7 +164,22 @@ return (
                         )}
                         indeksAQI={kualitasUdara.indeksAQI}
                     />
-
+                    
+                    <Button
+                        title="Tambahkan ke Favorit"
+                        onPress={() =>
+                            router.push({
+                                pathname: "/tambah-favorit",
+                                params: {
+                                id: String(kotaTerpilih.id),
+                                nama: kotaTerpilih.name,
+                                lat: String(kotaTerpilih.latitude),
+                                lon: String(kotaTerpilih.longitude),
+                                },
+                        })
+                        }
+                    />
+                    
                     <Text>
                         Suhu maksimal:{" "}
                         {cuaca.harian.suhuMaksimal[0]}°C
