@@ -22,3 +22,15 @@ const kamusKodeCuaca: Record<number, string> = {
 export function labelKodeCuaca(kode: number): string {
     return kamusKodeCuaca[kode] ?? "Tidak diketahui";
 }
+
+import { Ionicons } from "@expo/vector-icons";
+
+export function ikonKodeCuaca(kode: number): keyof typeof Ionicons.glyphMap {
+    if (kode === 0) return "sunny";
+    if (kode === 1 || kode === 2) return "partly-sunny";
+    if (kode === 3 || kode === 45 || kode === 48) return "cloud";
+    if (kode === 71) return "snow";
+    if (kode === 95) return "thunderstorm";
+    if (kode >= 51) return "rainy";
+    return "cloud";
+}

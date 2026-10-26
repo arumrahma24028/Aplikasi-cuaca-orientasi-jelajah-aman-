@@ -2,14 +2,20 @@
 import { useState, useEffect, useRef } from "react";
 import {
   View,
-  Text,
   ScrollView,
   ActivityIndicator,
-  Button,
-  TouchableOpacity,
+  Alert,
+  Platform,
 } from "react-native";
+
+import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
+import { tambahRiwayat } from "../../services/searchHistory";
+import Teks from "../../components/Teks";
+import TombolAksi from "../../components/TombolAksi";
+import ItemKotaTersimpan from "../../components/ItemKotaTersimpan";
+import { useTema } from "../../context/TemaContext";
 import SearchBox from "../../components/SearchBox";
 import WeatherCard from "../../components/WeatherCard";
 import AtribusiCuaca from "../../components/AtribusiCuaca";
@@ -23,7 +29,9 @@ import {
 import {
   bersihkanCacheLama,
   daftarKotaTersimpan,
+  hapusCacheKota,
 } from "../../services/cacheRepository";
+
 import {
   mintaIzinLokasi,
   ambilKoordinatSaatIni,
@@ -37,6 +45,8 @@ import {
 } from "../../../types/cache";
 
 export default function HalamanUtama() {
+  const { warna } = useTema();
+
   const [teksCari, setTeksCari] = useState("");
   const [hasilPencarian, setHasilPencarian] = useState<HasilGeocoding[]>([]);
   const [kotaTerpilih, setKotaTerpilih] = useState<HasilGeocoding | null>(null);
@@ -49,8 +59,46 @@ export default function HalamanUtama() {
   const teksTertunda = useDebounce(teksCari, 500);
   const requestIdRef = useRef(0);
 
+  // Menerima kota yang diklik dari tab Riwayat
+  const params = useLocalSearchParams<{
+    kotaId?: string;
+    nama?: string;
+    lat?: string;
+    lon?: string;
+    ts?: string;
+  }>();
+
+  useEffect(() => {
+    if (!params.ts || !params.kotaId || !params.nama) return;
+
+    pilihKota({
+      id: Number(params.kotaId),
+      name: params.nama,
+      latitude: Number(params.lat),
+      longitude: Number(params.lon),
+      country: "",
+    });
+  }, [params.ts]);
+
   async function muatKotaTersimpan() {
     setKotaTersimpan(await daftarKotaTersimpan());
+  }
+
+  function konfirmasiHapusCache(k: RingkasanKotaTersimpan) {
+    const pesan = `Data cuaca ${k.nama} akan dihapus dari perangkat dan tidak bisa dibuka offline lagi. Lanjutkan?`;
+    const proses = async () => {
+      await hapusCacheKota(k.kunci);
+      muatKotaTersimpan();
+    };
+
+    if (Platform.OS === "web") {
+      if (window.confirm(pesan)) proses();
+    } else {
+      Alert.alert("Hapus Cache", pesan, [
+        { text: "Batal", style: "cancel" },
+        { text: "Hapus Cache", style: "destructive", onPress: proses },
+      ]);
+    }
   }
 
   // Saat aplikasi dibuka: bersihkan cache lebih dari 7 hari.
@@ -97,10 +145,10 @@ export default function HalamanUtama() {
       if (idSaatIni !== requestIdRef.current) return;
 
       setHasil(data);
+      tambahRiwayat(kota).catch(() => {});
       muatKotaTersimpan();
-      
-      } catch (err) {
-        if (idSaatIni !== requestIdRef.current) return;
+    } catch (err) {
+      if (idSaatIni !== requestIdRef.current) return;
 
       setHasil(null);
       setPesanError(
@@ -144,41 +192,64 @@ export default function HalamanUtama() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: warna.latar }}>
       <ScrollView
         contentContainerStyle={{ padding: 16, gap: 16 }}
         keyboardShouldPersistTaps="handled"
       >
+        {/* ===== Header ===== */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Ionicons name="partly-sunny" size={52} color="#F5A623" />
+          <View>
+            <Teks style={{ fontSize: 28, fontWeight: "bold" }}>Beranda</Teks>
+            <Teks redup>Informasi cuaca terkini</Teks>
+          </View>
+        </View>
+
+        {/* ===== Pencarian & lokasi ===== */}
         <SearchBox onCari={setTeksCari} />
 
-        <Button
-          title="Gunakan Lokasi Saat Ini"
+        <TombolAksi
+          judul="Gunakan Lokasi Saat Ini"
+          ikon="locate"
           onPress={gunakanLokasiSaatIni}
         />
 
         {pesanLokasi && (
-          <Text accessibilityLabel={pesanLokasi}>{pesanLokasi}</Text>
+          <Teks accessibilityLabel={pesanLokasi}>{pesanLokasi}</Teks>
         )}
 
-        {hasilPencarian.map((kota) => (
-          <TouchableOpacity
-            key={kota.id}
-            onPress={() => pilihKota(kota)}
-          >
-            <Text>{kota.name}</Text>
-          </TouchableOpacity>
-        ))}
+        {hasilPencarian.length > 0 && (
+          <View style={{ gap: 8 }}>
+            {hasilPencarian.map((kota) => (
+              <ItemKotaTersimpan
+                key={kota.id}
+                nama={kota.name}
+                onPilih={() => pilihKota(kota)}
+              />
+            ))}
+          </View>
+        )}
 
+        {/* ===== Kota tersimpan ===== */}
         {kotaTersimpan.length > 0 && (
-          <View style={{ gap: 6 }}>
-            <Text style={{ fontWeight: "bold" }}>
-              Tersimpan di perangkat (bisa dibuka offline)
-            </Text>
+          <View
+            style={{
+              backgroundColor: warna.kartu,
+              borderRadius: 16,
+              padding: 16,
+              gap: 10,
+            }}
+          >
+            <Teks style={{ fontSize: 20, fontWeight: "bold" }}>
+              Kota Tersimpan
+            </Teks>
 
             {kotaTersimpan.map((k) => (
-              <TouchableOpacity
+              <ItemKotaTersimpan
                 key={k.kunci}
-                onPress={() =>
+                nama={k.nama}
+                onPilih={() =>
                   pilihKota({
                     id: k.id,
                     name: k.nama,
@@ -187,26 +258,27 @@ export default function HalamanUtama() {
                     country: "",
                   })
                 }
-              >
-                <Text>{k.nama}</Text>
-              </TouchableOpacity>
+                onHapus={() => konfirmasiHapusCache(k)}
+              />
             ))}
           </View>
         )}
 
-        {sedangMemuat && <ActivityIndicator />}
+        {sedangMemuat && <ActivityIndicator color={warna.aksen} />}
 
         {pesanError && (
-          <View>
-            <Text accessibilityLabel={pesanError}>{pesanError}</Text>
+          <View style={{ gap: 8 }}>
+            <Teks accessibilityLabel={pesanError}>{pesanError}</Teks>
 
-            <Button
-              title="Coba Lagi"
+            <TombolAksi
+              judul="Coba Lagi"
+              ikon="refresh"
               onPress={() => kotaTerpilih && pilihKota(kotaTerpilih, true)}
             />
           </View>
         )}
 
+        {/* ===== Hasil cuaca ===== */}
         {hasil && kotaTerpilih && !sedangMemuat && (
           <>
             <StatusData
@@ -220,20 +292,20 @@ export default function HalamanUtama() {
               tingkatAQI={konversiTingkatAQI(
                 hasil.kualitasUdara.indeksAQI
               )}
+              kodeCuaca={hasil.cuaca.saatIni.kodeCuaca}
+              kondisi={labelKodeCuaca(hasil.cuaca.saatIni.kodeCuaca)}
+              kecepatanAngin={hasil.cuaca.saatIni.kecepatanAngin}
             />
 
-            <Text style={{ fontSize: 12, color: "#888888" }}>
-              Kondisi: {labelKodeCuaca(hasil.cuaca.saatIni.kodeCuaca)} {"\u2022"} Angin{" "}
-              {hasil.cuaca.saatIni.kecepatanAngin} km/j
-            </Text>
-
-            <Button
-              title="Perbarui Sekarang"
+            <TombolAksi
+              judul="Perbarui Sekarang"
+              ikon="refresh"
               onPress={() => pilihKota(kotaTerpilih, true)}
             />
 
-            <Button
-              title="Tambahkan ke Favorit"
+            <TombolAksi
+              judul="Tambahkan ke Favorit"
+              ikon="add-circle"
               onPress={() =>
                 router.push({
                   pathname: "/tambah-favorit",

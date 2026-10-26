@@ -1,6 +1,7 @@
 // src/components/StatusData.tsx
 import { View, Text } from "react-native";
 import { SumberData } from "../../types/cache";
+import { useTema } from "../context/TemaContext";
 
 interface StatusDataProps {
   sumber: SumberData;
@@ -28,31 +29,48 @@ function labelSumber(sumber: SumberData): string {
 }
 
 export default function StatusData({ sumber, disimpanPada }: StatusDataProps) {
+  const { gelap, warna } = useTema();
+
   const basi = sumber === "cache-basi";
   const label = labelSumber(sumber);
   const umur = formatUmur(disimpanPada);
+
+  const latarKotak = basi
+    ? gelap ? "#3A2A12" : "#FEF3E2"
+    : gelap ? "#10312A" : "#EAFBF6";
+  const warnaLabel = basi
+    ? gelap ? "#FBBF24" : "#B45309"
+    : gelap ? "#4ADE80" : "#13795F";
 
   return (
     <View
       accessible
       accessibilityLabel={label + ", diperbarui " + umur}
       style={{
-        padding: 8,
-        borderRadius: 8,
-        backgroundColor: basi ? "#FEF3E2" : "#EAFBF6",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        padding: 12,
+        borderRadius: 12,
+        backgroundColor: latarKotak,
       }}
     >
-      <Text
+      <View
         style={{
-          fontSize: 12,
-          color: basi ? "#B45309" : "#13795F",
+          width: 12,
+          height: 12,
+          borderRadius: 6,
+          backgroundColor: warnaLabel,
         }}
-      >
-        {label}
-      </Text>
-      <Text style={{ fontSize: 11, color: "#666666" }}>
-        Diperbarui {umur}
-      </Text>
+      />
+      <View>
+        <Text style={{ fontSize: 14, fontWeight: "bold", color: warnaLabel }}>
+          {label}
+        </Text>
+        <Text style={{ fontSize: 12, color: warna.teksSekunder }}>
+          Diperbarui {umur}
+        </Text>
+      </View>
     </View>
   );
 }

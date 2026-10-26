@@ -1,118 +1,197 @@
 // src/app/(tabs)/riwayat.tsx
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { Alert, Button, Platform, Text, View } from "react-native";
+import { Alert, Platform, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import HeaderHalaman from "../../components/HeaderHalaman";
+import ItemKotaTersimpan from "../../components/ItemKotaTersimpan";
+import KartuBagian from "../../components/KartuBagian";
+import Teks from "../../components/Teks";
+import TombolAksi from "../../components/TombolAksi";
+import { useTema } from "../../context/TemaContext";
+import {daftarKotaTersimpan,hapusCacheKota} from "../../services/cacheRepository";
 import { ambilSemuaFavorit, hapusFavorit } from "../../services/favoritStorage";
+import { ambilRiwayat, kosongkanRiwayat } from "../../services/searchHistory";
 
+import type { RingkasanKotaTersimpan } from "../../../types/cache";
 import type { KotaFavorit } from "../../../types/favorit";
+import type { HasilGeocoding } from "../../../types/geocoding";
 
 export default function TabRiwayat() {
+  const { warna } = useTema();
   const [daftarFavorit, setDaftarFavorit] = useState<KotaFavorit[]>([]);
-  const [sedangMenghapus, setSedangMenghapus] = useState<number | null>(null);
+  const [riwayat, setRiwayat] = useState<HasilGeocoding[]>([]);
+  const [kotaCache, setKotaCache] = useState<RingkasanKotaTersimpan[]>([]);
 
-  async function muatFavorit() {
+  async function muatData() {
     try {
-      const data = await ambilSemuaFavorit();
-      setDaftarFavorit(data);
+      setDaftarFavorit(await ambilSemuaFavorit());
+      setRiwayat(await ambilRiwayat());
+      setKotaCache(await daftarKotaTersimpan());
     } catch (error) {
-      console.error("Gagal mengambil favorit:", error);
+      console.error("Gagal memuat data:", error);
     }
   }
 
   useFocusEffect(
     useCallback(() => {
-      muatFavorit();
+      muatData();
     }, []),
   );
 
-  function konfirmasiHapus(kota: KotaFavorit) {
-    const prosesHapus = async () => {
-      await hapusFavorit(kota.id);
-      setDaftarFavorit((prev) => prev.filter((k) => k.id !== kota.id));
-    };
+  // Klik kota -> pindah ke Beranda dan langsung cari kota tersebut
+  function bukaDiBeranda(id: number, nama: string, lat: number, lon: number) {
+    router.navigate({
+      pathname: "/",
+      params: {
+        kotaId: String(id),
+        nama,
+        lat: String(lat),
+        lon: String(lon),
+        ts: String(Date.now()),
+      },
+    });
+  }
 
-    // Jika dibuka di browser / laptop
+  function bersihkanRiwayat() {
+    tampilkanKonfirmasi(
+      "Hapus",
+      "Seluruh riwayat pencarian akan dihapus. Lanjutkan?",
+      "Hapus",
+      async () => {
+        try {
+          await kosongkanRiwayat();
+          setRiwayat([]);
+        } catch (error) {
+          console.error("Gagal menghapus riwayat:", error);
+          Alert.alert("Gagal", "Riwayat pencarian tidak berhasil dihapus.");
+        }
+      },
+    );
+  }
+
+  // Dialog konfirmasi yang jalan di web dan di HP
+  function tampilkanKonfirmasi(
+    judul: string,
+    pesan: string,
+    teksTombol: string,
+    saatYakin: () => void,
+  ) {
     if (Platform.OS === "web") {
-      const yakin = window.confirm(`Yakin hapus ${kota.nama} dari daftar favorit?`);
-      if (yakin) {
-        prosesHapus();
-      }
+      if (window.confirm(pesan)) saatYakin();
     } else {
-      // Jika di HP (Android / iOS)
-      Alert.alert(
-        "Konfirmasi Hapus",
-        `Yakin hapus ${kota.nama} dari daftar favorit?`,
-        [
-          { text: "Batal", style: "cancel" },
-          {
-            text: "Hapus",
-            style: "destructive",
-            onPress: prosesHapus,
-          },
-        ]
-      );
+      Alert.alert(judul, pesan, [
+        { text: "Batal", style: "cancel" },
+        { text: teksTombol, style: "destructive", onPress: saatYakin },
+      ]);
     }
   }
 
-  async function prosesHapus(id: number) {
-    try {
-      setSedangMenghapus(id);
+  function konfirmasiHapus(kota: KotaFavorit) {
+    tampilkanKonfirmasi(
+      "Konfirmasi Hapus",
+      `Yakin hapus ${kota.nama} dari daftar favorit?`,
+      "Hapus",
+      async () => {
+        try {
+          await hapusFavorit(kota.id);
+          setDaftarFavorit(await ambilSemuaFavorit());
+        } catch (error) {
+          console.error("Gagal menghapus favorit:", error);
+          Alert.alert("Gagal", "Kota tidak berhasil dihapus dari favorit.");
+        }
+      },
+    );
+  }
 
-      await hapusFavorit(id);
-
-      // Ambil ulang data dari AsyncStorage
-      const dataTerbaru = await ambilSemuaFavorit();
-      setDaftarFavorit(dataTerbaru);
-    } catch (error) {
-      console.error("Gagal menghapus favorit:", error);
-
-      Alert.alert("Gagal", "Kota tidak berhasil dihapus dari favorit.");
-    } finally {
-      setSedangMenghapus(null);
-    }
+  function konfirmasiHapusCache(kota: RingkasanKotaTersimpan) {
+    tampilkanKonfirmasi(
+      "Hapus Cache",
+      `Data cuaca ${kota.nama} akan dihapus dari perangkat dan tidak bisa dibuka offline lagi. Lanjutkan?`,
+      "Hapus",
+      async () => {
+        try {
+          await hapusCacheKota(kota.kunci);
+          setKotaCache(await daftarKotaTersimpan());
+        } catch (error) {
+          console.error("Gagal menghapus cache:", error);
+          Alert.alert("Gagal", "Cache kota tidak berhasil dihapus.");
+        }
+      },
+    );
   }
 
   return (
-    <SafeAreaView
-      style={{
-        flex: 1,
-        padding: 16,
-        gap: 12,
-      }}
-    >
-      <Text
-        style={{
-          fontSize: 18,
-          fontWeight: "bold",
-        }}
-      >
-        Kota Favorit
-      </Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: warna.latar }}>
+      <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+        <HeaderHalaman
+          ikon="time"
+          judul="Riwayat"
+          subjudul="Pencarian, cache, dan favorit"
+        />
 
-      <Text>Tersimpan {daftarFavorit.length} kota</Text>
+        {/* ===== Riwayat pencarian ===== */}
+        <KartuBagian judul="Riwayat Pencarian">
+          {riwayat.length === 0 && (
+            <Teks redup>Belum ada riwayat pencarian</Teks>
+          )}
 
-      {daftarFavorit.length === 0 && <Text>Belum ada kota favorit</Text>}
+          {riwayat.map((kota) => (
+            <ItemKotaTersimpan
+              key={kota.id}
+              nama={kota.name}
+              ikon="time-outline"
+              onPilih={() =>
+                bukaDiBeranda(kota.id, kota.name, kota.latitude, kota.longitude)
+              }
+            />
+          ))}
 
-      {daftarFavorit.map((kota) => (
-        <View
-          key={kota.id}
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <Text>{kota.nama}</Text>
+          {riwayat.length > 0 && (
+            <TombolAksi
+              judul="Hapus Semua Riwayat"
+              ikon="trash"
+              bahaya
+              onPress={bersihkanRiwayat}
+            />
+          )}
+        </KartuBagian>
 
-          <Button
-            title={sedangMenghapus === kota.id ? "Menghapus..." : "Hapus"}
-            disabled={sedangMenghapus === kota.id}
-            onPress={() => konfirmasiHapus(kota)}
-          />
-        </View>
-      ))}
+        {/* ===== Kota tersimpan di perangkat (cache offline) ===== */}
+        <KartuBagian judul="Kota Tersimpan di Perangkat">
+          {kotaCache.length === 0 && <Teks redup>Belum ada cache kota</Teks>}
+
+          {kotaCache.map((kota) => (
+            <ItemKotaTersimpan
+              key={kota.kunci}
+              nama={kota.nama}
+              labelHapus={`Hapus cache ${kota.nama}`}
+              onPilih={() =>
+                bukaDiBeranda(kota.id, kota.nama, kota.latitude, kota.longitude)
+              }
+              onHapus={() => konfirmasiHapusCache(kota)}
+            />
+          ))}
+        </KartuBagian>
+
+        {/* ===== Kota favorit ===== */}
+        <KartuBagian judul="Kota Favorit">
+          <Teks redup>Tersimpan {daftarFavorit.length} kota</Teks>
+
+          {daftarFavorit.length === 0 && <Teks>Belum ada kota favorit</Teks>}
+
+          {daftarFavorit.map((kota) => (
+            <ItemKotaTersimpan
+              key={kota.id}
+              nama={kota.nama}
+              ikon="heart"
+              labelHapus={`Hapus ${kota.nama} dari favorit`}
+              onHapus={() => konfirmasiHapus(kota)}
+            />
+          ))}
+        </KartuBagian>
+      </ScrollView>
     </SafeAreaView>
   );
 }
